@@ -18,7 +18,7 @@ import (
 // 4. write
 func main() {
 	var (
-		files       = []string{"./filereader/files/1.csv", "./filereader/files/2.csv", "./filereader/files/3.csv"}
+		files       = []string{"./files/1.csv", "./files/2.csv", "./files/3.csv"}
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
 		done        = make(chan bool, 1)
 	)
@@ -186,7 +186,7 @@ func printF(ctx context.Context, in <-chan User) <-chan User {
 
 func write(ctx context.Context, in <-chan User, done chan<- bool) {
 	var (
-		path = "./filereader/files/out.csv"
+		path = "./files/out.csv"
 	)
 
 	if isExist(path) {
