@@ -7,34 +7,10 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 )
-
-type User struct {
-	first  string
-	last   string
-	age    uint8
-	domain string
-	email  string
-}
-
-func (u User) filter() bool {
-	return strings.Contains(u.email, "@k")
-}
-
-func (u User) toRecord() []string {
-	return []string{
-		u.first,
-		u.last,
-		strconv.FormatUint(uint64(u.age), 10),
-		u.domain,
-		u.email,
-	}
-
-}
 
 // 1. read
 // 2. transform
@@ -43,24 +19,32 @@ func (u User) toRecord() []string {
 func main() {
 	var (
 		files       = []string{"./filereader/files/1.csv", "./filereader/files/2.csv", "./filereader/files/3.csv"}
-		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
+		done        = make(chan bool, 1)
 	)
 
+	defer close(done)
 	defer cancel()
 
-	write(
-		filter(
-			transform(
-				read(ctx, files),
-			),
-		),
-	)
+	chR := read(ctx, files)
+	chT := transform(ctx, chR)
+	chF := filter(ctx, chT)
+	chP := printF(ctx, chF)
+
+	write(ctx, chP, done)
+
+	select {
+	case <-ctx.Done():
+		fmt.Println("ctx done")
+	case <-done:
+		fmt.Println("all jobs done")
+	}
 }
 
-func read(c context.Context, input []string) (context.Context, <-chan []string) {
+func read(c context.Context, input []string) <-chan []string {
 	var (
-		out    = make(chan []string)
-		g, ctx = errgroup.WithContext(c)
+		out  = make(chan []string)
+		g, _ = errgroup.WithContext(c)
 	)
 
 	for _, path := range input {
@@ -110,20 +94,20 @@ func read(c context.Context, input []string) (context.Context, <-chan []string) 
 		close(out)
 	}()
 
-	return ctx, out
+	return out
 }
 
-func transform(ctx context.Context, in <-chan []string) (context.Context, <-chan User) {
+func transform(ctx context.Context, in <-chan []string) <-chan User {
 	var out = make(chan User)
 
 	go func() {
+		defer close(out)
+
 		for {
 			select {
 			case line, done := <-in:
 
 				if !done {
-					close(out)
-
 					return
 				}
 
@@ -141,27 +125,25 @@ func transform(ctx context.Context, in <-chan []string) (context.Context, <-chan
 				out <- user
 
 			case <-ctx.Done():
-				close(out)
-
 				return
 			}
 		}
 	}()
 
-	return ctx, out
+	return out
 }
 
-func filter(ctx context.Context, in <-chan User) (context.Context, <-chan User) {
+func filter(ctx context.Context, in <-chan User) <-chan User {
 	var out = make(chan User)
 
 	go func() {
+		defer close(out)
+
 		for {
 			select {
 			case u, ok := <-in:
 
 				if !ok {
-					close(out)
-
 					return
 				}
 
@@ -169,28 +151,40 @@ func filter(ctx context.Context, in <-chan User) (context.Context, <-chan User) 
 					out <- u
 				}
 			case <-ctx.Done():
-				close(out)
-
 				return
 			}
 		}
 	}()
 
-	return ctx, out
+	return out
 }
 
-func printF(in <-chan User) {
-	for {
-		user, ok := <-in
-		if !ok {
-			return
+func printF(ctx context.Context, in <-chan User) <-chan User {
+	var out = make(chan User)
+
+	go func() {
+		defer close(out)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case user, ok := <-in:
+				if !ok {
+					return
+				}
+
+				fmt.Printf("user: %+v\n", user)
+
+				out <- user
+			}
 		}
+	}()
 
-		fmt.Printf("user: %+v\n", user)
-	}
+	return out
 }
 
-func write(ctx context.Context, in <-chan User) {
+func write(ctx context.Context, in <-chan User, done chan<- bool) {
 	var (
 		path = "./filereader/files/out.csv"
 	)
@@ -202,24 +196,26 @@ func write(ctx context.Context, in <-chan User) {
 	file, _ := os.Create(path)
 	writer := csv.NewWriter(file)
 
+loop:
 	for {
 		select {
 		case a, ok := <-in:
 			if !ok {
-				writer.Flush()
-
-				return
+				break loop
 			}
 
 			if err := writer.Write(a.toRecord()); err != nil {
 				fmt.Printf("can not write a record: %+v", a)
 			}
-		case <-ctx.Done():
-			writer.Flush()
 
+		case <-ctx.Done():
+			_ = os.Remove(path)
 			return
 		}
 	}
+
+	writer.Flush()
+	done <- true
 }
 
 func isExist(path string) bool {
@@ -237,4 +233,26 @@ func isExist(path string) bool {
 	}(file)
 
 	return false
+}
+
+type User struct {
+	first  string
+	last   string
+	age    uint8
+	domain string
+	email  string
+}
+
+func (u User) filter() bool {
+	return u.age <= 20
+}
+
+func (u User) toRecord() []string {
+	return []string{
+		u.first,
+		u.last,
+		strconv.FormatUint(uint64(u.age), 10),
+		u.domain,
+		u.email,
+	}
 }
