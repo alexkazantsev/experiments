@@ -1,2 +1,4 @@
+github.com/alexkazantsev/experiments/filereader v0.0.0-20241106191346-fb1a93407cc2 h1:DC5gzrng+5odub+Az3Oi8r93gcFK32dGu/948MB7yKg=
+github.com/alexkazantsev/experiments/filereader v0.0.0-20241106191346-fb1a93407cc2/go.mod h1:phORJb14IUd6IGdDgXgJq1KobJ6Gep4NxAoRjVoCNGw=
 golang.org/x/sync v0.8.0 h1:3NFvSEYkUoMifnESzZl15y791HH1qU2xm6eCJU5ZPXQ=
 golang.org/x/sync v0.8.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=

@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// 1. read
+// 1. read file concurrent
 // 2. transform
 // 3. filter
 // 4. write
@@ -233,26 +233,4 @@ func isExist(path string) bool {
 	}(file)
 
 	return false
-}
-
-type User struct {
-	first  string
-	last   string
-	age    uint8
-	domain string
-	email  string
-}
-
-func (u User) filter() bool {
-	return u.age <= 20
-}
-
-func (u User) toRecord() []string {
-	return []string{
-		u.first,
-		u.last,
-		strconv.FormatUint(uint64(u.age), 10),
-		u.domain,
-		u.email,
-	}
 }
