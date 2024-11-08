@@ -1,10 +1,10 @@
 package user
 
 import (
-	"github.com/alexkazantsev/experiments/rest/server"
+	"net/http"
 )
 
-func Routes(router *server.Router, ctrl UserController) {
-	router.V1.HandleFunc("GET /users", ctrl.Find)
-	router.V1.HandleFunc("GET /users/{id}", ctrl.FindOne)
+func RegisterRoutes(v1 *http.ServeMux, ctrl UserController) {
+	v1.HandleFunc("GET /users", ctrl.Find)
+	v1.HandleFunc("GET /users/{id}", ctrl.FindOne)
 }

@@ -1,10 +1,16 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/alexkazantsev/experiments/rest/internal/user"
 	"github.com/alexkazantsev/experiments/rest/server/middlewares"
 )
 
@@ -12,22 +18,25 @@ type Middleware func(http.Handler) http.HandlerFunc
 
 type Server struct {
 	Addr   string
-	Router *http.ServeMux
 	Server *http.Server
 }
 
-func NewServer(router *Router) *Server {
+func NewServer() *Server {
 	var (
-		addr = ":8080"
-		s    = &http.Server{
+		addr     = ":8080"
+		router   = NewRouter()
+		userSrv  = user.NewUserService()
+		userCtrl = user.NewUserController(userSrv)
+		s        = &http.Server{
 			Addr:    addr,
 			Handler: router.V1,
 		}
 	)
 
+	user.RegisterRoutes(router.V1, userCtrl)
+
 	return &Server{
-		Addr:   ":8080",
-		Router: router.V1,
+		Addr:   addr,
 		Server: s,
 	}
 }
@@ -44,11 +53,14 @@ func (s *Server) Use(m ...Middleware) {
 	}
 }
 
-func (s *Server) Shutdown() error {
-	return nil
-}
+func Run() error {
+	var (
+		s    = NewServer()
+		done = make(chan os.Signal, 1)
+	)
 
-func Run(s *Server) error {
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
 	s.Use(
 		middlewares.Recover,
 		middlewares.Logger,
@@ -57,8 +69,28 @@ func Run(s *Server) error {
 		middlewares.User,
 	)
 
-	log.Printf("server started at %s", s.Addr)
+	go func() {
+		if err := s.Server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Error starting the server: %+v\n", err)
+		}
 
-	return s.Server.ListenAndServe()
+		log.Println("Stopped serving new connections.")
+	}()
 
+	log.Printf("server started at %s\n", s.Addr)
+
+	<-done
+
+	log.Println("Received signal to stop")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.Server.Shutdown(ctx); err != nil {
+		log.Fatalf("failed to stop: %+v\n", err)
+	}
+
+	log.Println("Server was gracefully stopped.")
+
+	return nil
 }
